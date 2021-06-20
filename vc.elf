@@ -1,0 +1,707 @@
+%%%%%%%%%%%%%%%Variables and arithmetic expressions%%%%%%%%%%%%%%%%%%%
+nat : type.
+z : nat.
+s : nat -> nat.
+
+int  :  type.
+pos : nat -> int.
+neg : nat -> int.
+
+variable : type.
+var : nat -> variable.
+
+arth : type.
+arthvar : variable -> arth.
+n : int -> arth.
++ : arth -> arth -> arth. %infix left 7 +.
+- : arth -> arth -> arth. %infix left 7 -.
+* : arth -> arth -> arth. %infix left 8 *.
+
+0 : arth
+     = n (pos z).
+1 : arth
+     = n (pos (s z)).
+
+
+%%%%%%%Boolean expressions and assertions %%%%%%%%%%%%%%
+bexp : type.
+true : bexp.
+false : bexp.
+== : arth -> arth -> bexp. %infix none 6 ==.
+leq : arth -> arth -> bexp. %infix none 6 leq.
+& : bexp -> bexp -> bexp. %infix left 5 &.
+or : bexp -> bexp -> bexp. %infix left 4 or.
+not : bexp -> bexp.
+
+asrt : type. %name asrt A.
+atrue : asrt.
+afalse : asrt.
+a== : arth -> arth -> asrt. %infix none 6 a==.
+aleq : arth -> arth -> asrt. %infix none 6 aleq.
+a& : asrt -> asrt -> asrt. %infix left 5 a&.
+aor : asrt -> asrt -> asrt. %infix left 4 aor.
+a=> : asrt -> asrt -> asrt. %infix right 3 a=>.
+% derived connective
+anot : asrt -> asrt
+	       = [a] a a=> afalse.
+aexist : (arth -> asrt) -> asrt.
+aforall : (arth -> asrt) -> asrt.
+
+
+bexp_asrt : bexp -> asrt -> type.
+%mode bexp_asrt +B -AS.
+bexp_asrt/true : bexp_asrt true atrue.
+bexp_asrt/false : bexp_asrt false afalse.
+bexp_asrt/== : bexp_asrt (A0 == A1) (A0 a== A1).
+bexp_asrt/leq : bexp_asrt (A0 leq A1) (A0 aleq A1).
+bexp_asrt/& : bexp_asrt (B0 & B1) (AS0 a& AS1)
+	       <- bexp_asrt B0 AS0
+	       <- bexp_asrt B1 AS1.
+bexp_asrt/or : bexp_asrt (B0 or B1) (AS0 aor AS1)
+	       <- bexp_asrt B0 AS0
+	       <- bexp_asrt B1 AS1.
+bexp_asrt/not : bexp_asrt (not B0) (anot A0)
+		 <- bexp_asrt B0 A0.
+
+%worlds () (bexp_asrt _ _).
+%total B (bexp_asrt B _).
+
+
+
+% Annotated commands
+comh : type. %name comh Ch.
+
+hskip : comh.
+hassign : variable -> arth -> comh.
+h; : comh -> comh -> comh. %infix left 7 h;.
+hif : bexp -> comh -> comh -> comh.
+hwhile : asrt -> bexp -> comh -> comh.
+
+
+% Non-annotated commands
+com : type. %name com C.
+
+skip : com.
+assign : variable -> arth -> com.
+; : com -> com -> com. %infix left 7 ;.
+if : bexp -> com -> com -> com.
+while : bexp -> com -> com.
+
+% List of assertions.
+asrtlist : type. %name asrtlist L.
+nil : asrtlist.
+cons : asrt -> asrtlist -> asrtlist. %infix right 7 cons.
+
+append : asrtlist -> asrtlist -> asrtlist ->  type.
+append/nil : append nil L L.
+append/cons : append (AS cons L0) L (AS cons L')
+	       <- append L0 L L'.
+%mode append +L1 +L2 -L3.
+%worlds () (append _ _ _).
+%total L1 (append L1 _ _).
+
+
+erasure : comh -> com -> type.
+%mode erasure +CH -C.
+
+erasure/skip : erasure hskip skip.
+erasure/assign : erasure (hassign V AS) (assign V AS).
+erasure/; : erasure (CH0 h; CH1) (C0 ; C1)
+	     <- erasure CH0 C0
+	     <- erasure CH1 C1.
+erasure/if : erasure (hif B CH0 CH1) (if B C0 C1)
+	     <- erasure CH0 C0
+	     <- erasure CH1 C1.
+
+erasure/while : erasure (hwhile I B CH) (while B C)
+		 <- erasure CH C.
+
+%worlds () (erasure _ _).
+%total (CH) (erasure CH _).
+
+%%%%%%%%%%%%%Substitution%%%%%%%%%%%%%%%%%%%%%%
+result : type.
+yes : result.
+no : result.
+
+
+compare : nat -> nat -> result -> type.
+%mode compare +I1 +I2 -R.
+compare/zz : compare z z yes.
+compare/zs : compare z (s I) no.
+compare/sz : compare (s I) z no.
+compare/ss : compare (s I1) (s I2) R
+                <- compare I1 I2 R.
+%worlds () (compare _ _ _).
+%total I (compare  I _ _).
+
+do_con : result -> variable -> arth -> (arth -> arth) -> type.
+%mode do_con +R +V +A -CON.
+do_con/yes : do_con yes V A ([a] a) .
+do_con/no : do_con no V A ([a] A).
+
+%block do_block : block  {a:arth}.
+		    
+%worlds (do_block) (do_con _ _ _ _).
+%total {} (do_con _ _ _ _).
+
+arth_context : arth -> variable -> (arth -> arth ) -> type.
+%mode arth_context +A +V -CON.
+arth_context/arthvar : arth_context (arthvar (var I0)) (var I1) CON
+			<- compare I0 I1 R
+			<- do_con R (var I1) (arthvar ( var I0)) CON.
+arth_context/n : arth_context (n I) V ([a] (n I)).
+arth_context/+ : arth_context (A0 + A1) V  ([a] (CON0 a) + (CON1 a))
+		  <- arth_context A0 V CON0
+		  <- arth_context A1 V CON1.
+arth_context/- : arth_context (A0 - A1) V  ([a] (CON0 a) - (CON1 a))
+		  <- arth_context A0 V CON0
+		  <- arth_context A1 V CON1.
+arth_context/* : arth_context (A0 * A1) V  ([a] (CON0 a) * (CON1 a))
+		  <- arth_context A0 V CON0
+		  <- arth_context A1 V CON1.
+
+%block a_con : block    {a:arth} {_:{V} arth_context a V ([x:arth] a)}.
+
+%worlds (a_con) (arth_context _ _ _).
+%total A   (arth_context A _ _).
+
+asrt_context : asrt -> variable -> (arth -> asrt ) -> type.
+%mode asrt_context +A +V -CON.
+asrt_context/true : asrt_context atrue V ([a] atrue).
+asrt_context/false : asrt_context afalse V ([a] afalse).
+asrt_context/== : asrt_context (A a== B) V ([a] (CONA a) a== (CONB a))
+		   <- arth_context A V CONA
+		   <- arth_context B V CONB.
+asrt_context/leq : asrt_context (A aleq B) V ([a] (CONA a) aleq (CONB a))
+		   <- arth_context A V CONA
+		   <- arth_context B V CONB.
+asrt_context/& : asrt_context (A a& B) V ([a] (CONA a) a& (CONB a))
+		   <- asrt_context A V CONA
+		   <- asrt_context B V CONB.
+asrt_context/or : asrt_context (A aor B) V ([a] (CONA a) aor (CONB a))
+		   <- asrt_context A V CONA
+		   <- asrt_context B V CONB.
+asrt_context/=> : asrt_context (A a=> B) V ([a] (CONA a) a=> (CONB a))
+		   <- asrt_context A V CONA
+		   <- asrt_context B V CONB.
+asrt_context/exist : asrt_context (aexist  E) V ([a:arth] aexist [x] ((CONE x) a))
+		      <- ({a:arth} ({V'} arth_context a V' ([x] a)) -> asrt_context (E a) V (CONE a)).
+asrt_context/forall : asrt_context (aforall  E) V ([a:arth] aforall [x] ((CONE x) a))
+		      <- ({a:arth} ({V'} arth_context a V' ([x] a)) -> asrt_context (E a) V (CONE a)).
+
+
+%worlds (a_con) (asrt_context _ _ _).
+%total A   (asrt_context A _ _).
+
+
+%%%%%%%%%%%%%Verfication Conditions%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+wp : comh -> asrt -> asrt -> asrtlist -> type. %name wp WPP.
+%mode wp +Ch +Q1 -Q2 -V.
+
+wp/skip : wp hskip Q Q nil.
+
+wp/assign : wp (hassign V A) Q (CON A) nil
+             <- asrt_context Q V CON.	     
+wp/; : wp (Ch0 h; Ch1) Q P L
+	  <- wp Ch1 Q R L1
+	  <- wp Ch0 R P L0
+	  <- append L0 L1 L.
+
+wp/if : wp (hif B Ch0 Ch1) Q ((AS a=> P0) a& ((anot AS) a=> P1)) L
+	 <- bexp_asrt B AS
+	 <- wp Ch0 Q P0 L0
+	 <- wp Ch1 Q P1 L1
+	 <- append L0 L1 L.
+
+wp/while : wp (hwhile I B Ch) 
+              Q 
+              I  
+              (((I a& AS) a=> P) cons (I a& (anot AS) a=> Q) cons L0)
+	    <- bexp_asrt B AS
+	    <- wp Ch I P L0.
+
+%worlds () (wp _ _ _ _).
+%total Ch (wp Ch Q1 Q2 V).
+
+
+vc : asrt -> comh -> asrt -> asrtlist -> type.
+%mode vc +A1 +Ch +A2 -L.
+
+vc/ : vc A Ch B ((A a=> P) cons V)
+       <- wp Ch B P V.
+
+
+%worlds () (vc _ _ _ _).
+%total Ch (vc A1 Ch A2 V).
+
+
+%%%%%%%%%%%%%%%%%%Proofs%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+proof : asrt -> type.
+
+andi : proof A -> proof B -> proof (A a& B).
+andel : proof (A a& B) -> proof A.
+ander : proof (A a& B) -> proof B.
+
+oril : proof A -> proof (A aor B).
+orir : proof B -> proof (A aor B).
+ore : proof (A aor B) -> (proof A -> proof C) -> (proof B -> proof C)
+        -> proof C.
+
+impi : (proof A -> proof B) -> proof (A a=> B).
+impe : proof (A a=> B) -> proof A -> proof B.
+
+truei : proof atrue.
+
+falsee : proof afalse -> proof A.
+
+foralli : ({a} proof (P a)) -> proof (aforall [x] P x).
+foralle : proof (aforall [x] P x) -> {T} proof (P T).
+
+existi : {T} proof (P T) -> proof (aexist [x] P x).
+existe : proof (aexist [x] P x) -> ({a} proof (P a) -> proof C) -> proof C.
+
+eqi : proof (T a== T).
+eqe : {P} proof (T a== T') -> proof (P T) ->  proof (P T').
+
+not_not : proof (anot (anot A)) -> proof A.
+
+%% Derivations taken from peano.elf given during the course assignment 4
+sym : proof (T1 a== T2) -> proof (T2 a== T1)
+     = [e:proof (T1 a== T2)] eqe ([t] t a== T1) e eqi.
+
+trans : proof (T1 a== T2) -> proof (T2 a== T3) -> proof (T1 a== T3)
+     = [e12] [e23] eqe ([t] T1 a== t) e23 e12.
+
+cong : {C} proof (T1 a== T2) -> proof (C T1 a== C T2)
+     = [C] [e] eqe ([t] C T1 a== C t) e eqi.
+
+
+
+%%%%%%%%%%%%%%%Ring axioms%%%%%%%%%%%%%%%%%%%%%%%
+r_add_assoc : proof ((A + B) + C a== A + (B + C)).	     
+r_add_comm : proof (A + B a== B + A).
+r_add_id : proof ( 0 + A a== A).
+r_mul_assoc : proof ((A * B) * C a== A * (B * C)).
+r_mul_comm : proof (A * B a== B * A).
+r_mul_dist_l : proof (A * (B + C) a== A * B + A * C).
+r_mul_dist_r : proof ((A + B) * C a== A * C + B * C).
+r_mul_0 : proof (A * 0 a== 0).
+r_mul_1 : proof (A * 1 a== A).
+
+
+
+proof/sub : {V} proof A -> asrt_context A V ([a] CON a) -> ({a} proof (CON a)).
+
+
+
+%%%%%%%%%%%%%%%%%%%%%% Hoare logic %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+asrt_eq : asrt -> asrt -> type.
+asrt_eq/ : asrt_eq A A.
+
+% hoare triple. Imodsætning til wp er denne relation ikke total.
+h_triple : asrt -> com -> asrt -> type.
+
+h_triple/skip : h_triple P skip P.
+
+h_triple/assign : h_triple (CON AS) (assign V AS) Q
+                    <- asrt_context Q V CON.
+h_triple/; : h_triple P (C0 ; C1) Q
+	      <- h_triple P C0 Q'
+	      <- h_triple Q' C1 Q.
+
+h_triple/if : h_triple P (if B C0 C1) Q
+	       <- bexp_asrt B AS
+	       <- h_triple (P a& AS) C0 Q
+	       <- h_triple (P a& anot AS) C1 Q.
+
+h_triple/while : h_triple A (while B C0) (A a& anot AS)
+		  <- bexp_asrt B AS		  
+		  <- h_triple (A a& AS) C0 A.
+
+h_triple/conseq : h_triple A C0 B
+		   <- proof (A a=> A')
+		   <- h_triple A' C0 B'
+		   <- proof (B' a=> B).
+
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Soundness %%%%%%%%%%%%%%%%%%%%%%%
+
+asrtlist_proof : asrtlist -> type.
+asrtlist_proof/nil : asrtlist_proof nil.
+asrtlist_proof/cons : asrtlist_proof (AS cons L0)
+		   <- proof AS
+		   <- asrtlist_proof L0.
+
+asrtlist_inj : asrtlist_proof L -> append L1 L2 L -> asrtlist_proof L1 -> asrtlist_proof L2 -> type.
+%mode asrtlist_inj +LP +AP -LP1 -LP2.
+asrtlist_inj/nil : asrtlist_inj LP append/nil asrtlist_proof/nil LP.
+asrtlist_inj/cons : asrtlist_inj (asrtlist_proof/cons LP0 ASP0) (append/cons AP) (asrtlist_proof/cons LP1 ASP0) LP2
+			 <- asrtlist_inj LP0 AP LP1 LP2.
+
+%worlds () (asrtlist_inj _ _ _ _).
+%total AP (asrtlist_inj _ AP _ _).
+
+
+proof/impself : proof(AS a=> AS)
+	      = impi ([p] p).
+proof/ift : proof ((((AS a=> P0) a& ((anot AS) a=> P1)) a& AS) a=> P0)
+             = impi ([p] impe (andel (andel p)) (ander p) ).
+proof/iff : proof ((((AS a=> P0) a& ((anot AS) a=> P1)) a& (anot AS)) a=> P1)
+	     = impi ([p] impe (ander (andel p)) (ander p) ).
+
+
+
+sound_wp : wp Ch Q P L -> asrtlist_proof L -> erasure Ch C -> h_triple P C Q -> type.
+%mode sound_wp +WP +V +E -H.
+
+sound_wp/skip : sound_wp wp/skip asrtlist_proof/nil erasure/skip h_triple/skip.
+
+sound_wp/assign : sound_wp (wp/assign SUB) 
+                            asrtlist_proof/nil 
+                            erasure/assign 
+                            (h_triple/assign SUB).
+
+sound_wp/; : sound_wp (wp/; AP WP0 WP1) LP (erasure/; EP1 EP0) (h_triple/; HP1 HP0)
+	      <- asrtlist_inj LP AP LP0 LP1
+	      <- sound_wp WP0 LP0 EP0 HP0
+	      <- sound_wp WP1 LP1 EP1 HP1.
+
+
+sound_wp/if : sound_wp (wp/if AP WP1 WP0 BP) 
+                       LP 
+                       (erasure/if EP1 EP0) 
+                       (h_triple/if (h_triple/conseq proof/impself HP1 proof/iff) 
+                                    (h_triple/conseq proof/impself HP0 proof/ift) 
+                                     BP)
+	       <- asrtlist_inj LP AP LP0 LP1
+	       <- sound_wp WP1 LP1 EP1 HP1
+	       <- sound_wp WP0 LP0 EP0 HP0.
+
+sound_wp/while : sound_wp (wp/while WP0 BA) 
+                          (asrtlist_proof/cons (asrtlist_proof/cons LP' InB) IB) 
+                          (erasure/while EP0)
+                          (h_triple/conseq InB  (h_triple/while
+                                                  (h_triple/conseq proof/impself HP0 IB)
+                                                  BA)
+                          proof/impself)
+	       <- sound_wp WP0 LP' EP0 HP0.
+
+
+%worlds () (sound_wp _ _ _ _).
+%total (WP) (sound_wp WP _ _ _).
+
+% bevis for soundness af vc
+sound_vc : vc A Ch B L -> asrtlist_proof L -> erasure Ch C -> h_triple A C B -> type.
+%mode sound_vc +VCP +LP +EP -HP.
+
+sound_vc/ : sound_vc (vc/ WPP) 
+                     (asrtlist_proof/cons LP0 ASP) 
+                     EP 
+                     (h_triple/conseq proof/impself HP0 ASP)
+	     <- sound_wp WPP LP0 EP HP0.
+
+%worlds () (sound_vc _ _ _ _).
+%total (VCP) (sound_vc VCP _ _ _).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Existence proofs%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+compare_exist : {I1} {I2} compare I1 I2 R -> type.
+%mode compare_exist +I1 +I2 -CMP.
+compare_exist/zz : compare_exist z z compare/zz.
+compare_exist/zs : compare_exist z (s I) compare/zs.
+compare_exist/sz : compare_exist (s I) z compare/sz.
+compare_exist/ss : compare_exist (s I1) (s I2) (compare/ss CMP0)
+                <- compare_exist I1 I2 CMP0.
+%worlds () (compare_exist _ _ _).
+%total I (compare_exist  I _ _).
+
+
+
+do_con_exist :{R} {V} {A} do_con R V A CON -> type.
+%mode do_con_exist +R +V +A -DO.
+do_con_exist/yes : do_con_exist yes V A do_con/yes.
+do_con_exist/no : do_con_exist no V A do_con/no.
+
+%block do_con_exist_block : block    {a:arth} {VCON: {V} arth_context a V ([x:arth] a)}.
+%worlds (do_con_exist_block) (do_con_exist _ _ _ _).
+%total {} (do_con_exist  _ _ _ _).
+
+arth_context_exist : {A} {V} arth_context A V CON -> type.
+%mode arth_context_exist +A +V -ACON.
+arth_context_exist/arthvar : arth_context_exist (arthvar (var I0)) 
+                                                (var I1) 
+                                                (arth_context/arthvar DOCON CMP)
+		      <- compare_exist I0 I1 (CMP : compare _ _ R)
+		      <- do_con_exist R (var I1) (arthvar (var I0)) DOCON.
+
+arth_context_exist/n : arth_context_exist (n I) V arth_context/n.
+arth_context_exist/+ : arth_context_exist (A + B) V (arth_context/+ ACON1 ACON0)
+			<- arth_context_exist A V ACON0
+			<- arth_context_exist B V ACON1.
+arth_context_exist/- : arth_context_exist (A - B) V (arth_context/- ACON1 ACON0)
+			<- arth_context_exist A V ACON0
+			<- arth_context_exist B V ACON1.
+arth_context_exist/* : arth_context_exist (A * B) V (arth_context/* ACON1 ACON0)
+			<- arth_context_exist A V ACON0
+			<- arth_context_exist B V ACON1.
+
+%block arth_con_exist_block : block {a:arth} 
+                                    {VCON: {V} arth_context a V ([x:arth] a)} 
+                                    {_ : {V} arth_context_exist a V (VCON V)}.
+
+
+%worlds (arth_con_exist_block ) (arth_context_exist _ _ _).
+%total A (arth_context_exist  A _ _).
+
+
+asrt_context_exist : {A} {V} asrt_context A V CON -> type.
+%mode asrt_context_exist +A +V -CON.
+asrt_context_exist/true : asrt_context_exist atrue V asrt_context/true.
+asrt_context_exist/false : asrt_context_exist afalse V asrt_context/false.
+asrt_context_exist/== : asrt_context_exist (A a== B) V (asrt_context/== ACON1 ACON0)
+			 <- arth_context_exist A V ACON0
+			 <- arth_context_exist B V ACON1.
+asrt_context_exist/leq : asrt_context_exist (A aleq B) V (asrt_context/leq ACON1 ACON0)
+			 <- arth_context_exist A V ACON0
+			 <- arth_context_exist B V ACON1.
+asrt_context_exist/& : asrt_context_exist (A a& B) V (asrt_context/& ACON1 ACON0)
+			 <- asrt_context_exist A V ACON0
+			 <- asrt_context_exist B V ACON1.
+asrt_context_exist/or : asrt_context_exist (A aor B) V (asrt_context/or ACON1 ACON0)
+			 <- asrt_context_exist A V ACON0
+			 <- asrt_context_exist B V ACON1.
+asrt_context_exist/=> : asrt_context_exist (A a=> B) V (asrt_context/=> ACON1 ACON0)
+			 <- asrt_context_exist A V ACON0
+			 <- asrt_context_exist B V ACON1.
+asrt_context_exist/exist : asrt_context_exist (aexist E) V (asrt_context/exist ACONE)
+             <- ({a:arth} ({VCON:{V'} arth_context a V' ([x] a)} 
+                     ({V} arth_context_exist a V (VCON V))
+                          -> asrt_context_exist (E a) V (ACONE a VCON))).
+asrt_context_exist/forall : asrt_context_exist (aforall E) V (asrt_context/forall ACONE)
+             <- ({a:arth} ({VCON:{V'} arth_context a V' ([x] a)} 
+                     ({V} arth_context_exist a V (VCON V))
+                          -> asrt_context_exist (E a) V (ACONE a VCON))).
+
+
+%worlds (arth_con_exist_block ) (asrt_context_exist _ _ _).
+%total A (asrt_context_exist  A _ _).
+		       
+proof_sub : {V} proof A -> asrt_context A V ([a] CON a) -> ({a} proof (CON a)) -> type.
+%mode proof_sub +V +P +CON -P0.
+
+ - : proof_sub V (P:proof A) CON (proof/sub V P CON).
+
+%worlds () (proof_sub _ _ _ _).
+%total P (proof_sub _ P _ _).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Completeness %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+asrtlist_append_lemma : asrtlist_proof L1 -> asrtlist_proof L2 -> 
+                                  append L1 L2 L3 -> asrtlist_proof L3 -> type.
+%mode asrtlist_append_lemma +LP1 +LP2 -APP -LP3.
+
+asrtlist_append_lemma/nil : asrtlist_append_lemma asrtlist_proof/nil LP append/nil LP.
+asrtlist_append_lemma/cons : asrtlist_append_lemma (asrtlist_proof/cons LP0 ASP) 
+                                                   LP2 
+                                                   (append/cons AP) 
+                                                   (asrtlist_proof/cons LP' ASP)
+            <- asrtlist_append_lemma LP0 LP2 AP LP'.
+
+%worlds () (asrtlist_append_lemma _ _ _ _).
+%total LP1 (asrtlist_append_lemma LP1 _ _ _).
+
+
+% only used in andimp2
+proof/andimp : proof ((A a& B) a=> P0 ) -> proof (A a=> (B a=> P0))
+	     = [p0] (impi [a] (impi [b] (impe p0 (andi a b)))).
+proof/andimp2 : proof ((A a& B) a=> P0 ) -> proof (A a& (anot B) a=> P1 ) 
+                                  -> proof (A a=> (B a=> P0) a& ((anot B) a=> P1))
+	    = [p0][p1] impi [a] andi (impe (proof/andimp p0) a) (impe (proof/andimp p1) a).
+proof/impimp : proof (A a=> B) -> proof (B a=> C) -> proof (A a=> C)
+						     = [ab][bc] impi ([a] impe bc (impe ab a)).
+comp_wp : h_triple A C B -> proof (B a=> Q) ->  erasure Ch C -> wp Ch Q P L 
+                                  -> asrtlist_proof L -> proof (A a=> P) -> type.
+%mode comp_wp +HP +BQ -EP -WPP -LP -AP.
+
+comp_wp/skip : comp_wp h_triple/skip BQ erasure/skip wp/skip asrtlist_proof/nil BQ.
+
+comp_wp/assign : comp_wp (h_triple/assign CONB  : h_triple _ (assign V A) _)
+                         (BQ : proof (B a=> Q))
+                         erasure/assign
+                         (wp/assign CONQ)
+                         asrtlist_proof/nil
+                         (PA A)
+           <- asrt_context_exist Q V CONQ
+           <- proof_sub V BQ (asrt_context/=> CONQ CONB) PA .
+					 
+
+
+comp_wp/; : comp_wp ((h_triple/; H1 H0)) 
+                    BQ 
+                    (erasure/; EP1 EP0) 
+                    (wp/; APP WP0 WP1) 
+                    LP 
+                    IMP2
+	     <- comp_wp H1 BQ EP1 WP1 LP1 IMP	     
+	     <- comp_wp H0 IMP EP0 WP0 LP0 IMP2
+	     <- asrtlist_append_lemma LP0 LP1 APP LP.
+
+comp_wp/if : comp_wp (h_triple/if H1 H0 BA) 
+                     BQ 
+                     (erasure/if EP1 EP0) 
+                     (wp/if APP WP1 WP0 BA) 
+                     LP 
+                     (proof/andimp2 IMP0 IMP1)
+	     <- comp_wp H0 BQ EP0 WP0 LP0 IMP0
+	     <- comp_wp H1 BQ EP1 WP1 LP1 IMP1
+	     <- asrtlist_append_lemma LP0 LP1 APP LP.
+
+comp_wp/while : comp_wp (h_triple/while H0 BA : h_triple A _ _) 
+                        BQ 
+                        ((erasure/while EP0) : erasure (hwhile A _ _) _ ) 
+                        (wp/while WP0 BA) 
+                        (asrtlist_proof/cons (asrtlist_proof/cons LP BQ) IMP) 
+                        proof/impself
+		 <- comp_wp H0 proof/impself EP0 WP0 LP IMP.
+
+comp_wp/conseq : comp_wp (h_triple/conseq P1 H P0) BQ EP WP LP (proof/impimp P0 IMP)
+		  <- comp_wp H (proof/impimp P1 BQ) EP WP LP IMP.
+      
+%worlds () (comp_wp  _ _ _ _ _ _).
+%total (HP) (comp_wp HP _ _ _ _ _).
+
+comp_vc : h_triple A C B -> erasure Ch C -> vc A Ch B L -> asrtlist_proof L -> type.
+%mode comp_vc +H -E -V -LP.
+
+comp_vc/ : comp_vc H E (vc/ WP) (asrtlist_proof/cons L IMP)
+	    <- comp_wp H proof/impself E WP L IMP.
+
+%worlds () (comp_vc  _ _ _ _).
+%total H (comp_vc H _ _ _).
+
+
+%%%%%%%%%%%%%%% Test %%%%%%%%%%%%%%%%%%%
+
+varx : variable
+	= var z.
+vary : variable
+	= var (s z).
+varz : variable
+	= var (s (s z)).
+vari : variable
+	= var (s (s (s z))).
+
+
+%%%%%%%%%%%Test 1%%%%%%%%%%%%%%%
+
+test_prog1 : comh
+	     =   (hassign vary 0) h;
+		 (hwhile ((arthvar varz) * ((arthvar vary) + 1) a== (arthvar varx))
+		        (not ((arthvar vary) ==  (arthvar vari)))
+		     (
+		      (hassign varx (arthvar varx + (arthvar varz))) h;
+		      (hassign vary (arthvar vary + 1))
+		     )
+	       ).
+
+%abbrev test_prog1_p : asrt
+     = (arthvar varx) a== (arthvar varz).
+
+%abbrev test_prog1_q : asrt
+     = (arthvar varx) a== (arthvar vari + 1) * (arthvar varz).
+
+
+%abbrev test_prog1_ass1 : asrt
+			  = X a== Z a=> Z * (0 + 1) a== X.
+%abbrev test_prog1_ass2 : asrt
+		  =   Z * (Y + 1) a== X a&  (anot (Y a== I)) a=>  Z * (Y + 1 + 1) a== X + Z.
+%abbrev test_prog1_ass3 : asrt
+			  =  Z * (Y + 1) a== X a& (anot (anot (Y a== I))) a=>  X a== (I + 1) * Z.
+
+
+
+
+% Z * (0 + 1) = Z * 0 + Z * 1 = 0 + Z*1 = Z*1 = Z
+proof/ass1 : proof (X a== Z a=> Z * (0 + 1) a== X)
+	      = impi [xz] trans (trans (trans (trans r_mul_dist_l 
+	                                             (cong ([a] a + Z * 1) r_mul_0)
+	                                      ) 
+	                                r_add_id) 
+	                         r_mul_1) 
+	                  (sym xz).
+
+% Z * (y + 1 + 1) == Z * (y + 1) + Z * 1 == Z * (y + 1) + Z = X + Z
+proof/ass2 : proof (Z * (Y + 1) a== X a&  (anot (Y a== I)) 
+                                        a=> Z * (Y + 1 + 1) a== X + Z)
+	      = impi [zyx] trans (trans r_mul_dist_l 
+	                                (cong ([a] Z * (Y + 1) + a) r_mul_1)
+	                         ) 
+	                         (cong ([a] a + Z ) (andel zyx)).
+
+% X = Z * (Y + 1) = Z * (I + 1) = (I + 1) * Z
+proof/ass3 : proof (Z * (Y + 1) a== X a& (anot (anot (Y a== I))) 
+                                              a=> X a== (I + 1) * Z)
+	      =  impi [zyxAy] trans (trans (sym (andel zyxAy)) 
+	                                   (cong ([a] Z * (a + 1 )) (not_not (ander zyxAy)))
+	                            ) 
+	                            r_mul_comm.
+
+ass_list_1 : asrtlist
+	 = test_prog1_ass1 cons test_prog1_ass2 cons test_prog1_ass3 cons nil.
+
+proofs_of_ass_list_1 : asrtlist_proof ass_list_1
+		   = asrtlist_proof/cons (asrtlist_proof/cons (asrtlist_proof/cons 
+		                                                    asrtlist_proof/nil 
+		                                                    proof/ass3
+		                                              ) 
+		                                              proof/ass2) proof/ass1.
+
+
+% |= vc(p,test_prog,q).
+%query 1 5 D : vc test_prog1_p test_prog1 test_prog1_q  ass_list_1.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%Test 2%%%%%%%%%%%%%%%%%%%
+
+test_prog2 : comh
+	      = hif ((arthvar varx) leq (arthvar vary))
+		 hskip
+		 (hassign varx ((arthvar varx) * (1 + 1) )).
+
+%abbrev test_prog2_pq : asrt
+     = aexist [y] (arthvar varx) a== y * (1 + 1).
+
+
+%abbrev test_prog2_ass4 : asrt
+			 = (aexist ([y:arth] X a== y * (1 + 1))
+                              a=> (X aleq Z a=> aexist ([y:arth] X a== y * (1 + 1)))
+                              a&
+			      (anot (X aleq Z) a=> aexist ([y:arth] X * (1 + 1) a== y * (1 + 1)))).
+
+
+ass_list_2 : asrtlist
+	  = test_prog2_ass4 cons nil.
+
+proof/ass4 : proof (aexist ([y:arth] X a== y * (1 + 1))
+                              a=> (X aleq Z a=> aexist ([y:arth] X a== y * (1 + 1)))
+                              a&
+		       (anot (X aleq Z) a=> aexist ([y:arth] X * (1 + 1) a== y * (1 + 1))))
+	 =  impi [ey] andi (impi [_] ey) 
+	                   (impi [_] existe ey ([y'][py'] existi (y' * (1 + 1)) 
+	                                                         (cong ([i] i * (1 + 1)) py')
+	                                       )
+	                   ).
+
+proofs_of_ass_list_2 : asrtlist_proof ass_list_2
+		    = asrtlist_proof/cons asrtlist_proof/nil proof/ass4.
+
+%query 1 5 D : vc test_prog2_pq test_prog2 test_prog2_pq ass_list_2.
